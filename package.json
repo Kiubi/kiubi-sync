@@ -1,0 +1,19 @@
+{
+  "name": "kiubi-sync",
+  "version": "0.1.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "lint": "eslint \"./index.js\"",
+    "lint-fix": "eslint --fix \"./index.js\"",
+    "test": "npm run lint"
+  },
+  "author": "Sebastien BRAUN <sebastien@kiubi.com> (https://www.kiubi.com)",
+  "license": "MIT",
+  "dependencies": {
+    "basic-ftp": "^4.6.2",
+    "byte-size": "^7.0.0",
+    "chalk": "^4.1.0",
+    "lodash": "^4.17.20"
+  }
+}
