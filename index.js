@@ -466,7 +466,7 @@ class ftpWrapper {
 				await this._downloadReq(localPath);
 				await this.ftpClient.cd('/' + localDirPath);
 			}
-			else if (file.isFile && !isForbiddenFilename(file)) {
+			else if (file.isFile && !isForbiddenFilename(file.name)) {
 				// Skip donwload if local and remote file have same size and
 				// same modification within +/- 1sec
 				try {
