@@ -9,7 +9,12 @@
     "test": "npm run lint"
   },
   "author": "Sebastien BRAUN <sebastien@kiubi.com> (https://www.kiubi.com)",
+  "homepage": "https://github.com/Kiubi/kiubi-sync",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kiubi/kiubi-sync.git"
+  },
   "dependencies": {
     "basic-ftp": "^4.6.2",
     "byte-size": "^7.0.0",
