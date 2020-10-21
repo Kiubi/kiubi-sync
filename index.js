@@ -2,7 +2,7 @@ const FTP = require('basic-ftp');
 const { debounce } = require('lodash');
 const byteSize = require('byte-size');
 
-const { join, basename, dirname } = require('path');
+const { join, basename, dirname, sep, posix } = require('path');
 const { mkdir, readdir, stat } = require('fs');
 const { promisify } = require('util');
 const fsReadDir = promisify(readdir);
@@ -18,6 +18,16 @@ byteSize.defaultOptions({
 		return this.value + this.unit;
 	},
 });
+
+/**
+ * Convert local path into ftp file systeme (POSIX)
+ *
+ * @param {String} path
+ * @returns {String}
+ */
+function toFtpPath(path) {
+	return '/'+path.split(sep).join(posix.sep)
+}
 
 /**
  * Ensure local directory exists
@@ -318,8 +328,8 @@ class ftpWrapper {
 			timer.start(this.ftpClient);
 
 			const baseDir = dirname(path);
-			await this.ftpClient.ensureDir(`/${baseDir}`);
-			await this.ftpClient.uploadFrom(path, `/${path}`);
+			await this.ftpClient.ensureDir(toFtpPath(baseDir));
+			await this.ftpClient.uploadFrom(path, toFtpPath(path));
 			timer.stop();
 		}
 		catch(error) {
@@ -342,7 +352,7 @@ class ftpWrapper {
 
 		try {
 			await this.connect();
-			await this.ftpClient.remove(`/${path}`);
+			await this.ftpClient.remove(toFtpPath(path));
 		}
 		catch(error) {
 
@@ -369,7 +379,7 @@ class ftpWrapper {
 
 		try {
 			await this.connect();
-			await this.ftpClient.removeDir(`/${path}`);
+			await this.ftpClient.removeDir(toFtpPath(path));
 		}
 		catch(error) {
 
@@ -439,10 +449,10 @@ class ftpWrapper {
 			const stats = await fsStat(fullPath);
 			if (stats.isFile() && !isForbiddenFilename(file)) {
 				console.log(chalk.green('>'), fullPath);
-				await this.ftpClient.uploadFrom(fullPath, '/' + fullPath);
+				await this.ftpClient.uploadFrom(fullPath, toFtpPath(fullPath));
 			}
 			else if (stats.isDirectory()) {
-				await this.ftpClient.ensureDir(`/${fullPath}`);
+				await this.ftpClient.ensureDir(toFtpPath(fullPath));
 				await this._uploadToWorkingDir(fullPath);
 			}
 		}
@@ -458,13 +468,13 @@ class ftpWrapper {
 	async _downloadReq(localDirPath) {
 		await ensureLocalDirectory(localDirPath);
 
-		await this.ftpClient.cd(`/${localDirPath}`);
+		await this.ftpClient.cd(toFtpPath(localDirPath));
 		for (const file of await this.ftpClient.list()) {
 			const localPath = join(localDirPath, file.name);
 			if (file.isDirectory) {
 				await this.ftpClient.cd(file.name);
 				await this._downloadReq(localPath);
-				await this.ftpClient.cd('/' + localDirPath);
+				await this.ftpClient.cd(toFtpPath(localDirPath));
 			}
 			else if (file.isFile && !isForbiddenFilename(file.name)) {
 				// Skip donwload if local and remote file have same size and
