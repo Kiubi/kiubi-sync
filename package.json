@@ -1,7 +1,7 @@
 {
   "name": "kiubi-sync",
-  "version": "0.1.1",
-  "description": "",
+  "version": "0.1.2",
+  "description": "Aide à la publication de thème graphique personnalisé sur Kiubi",
   "main": "index.js",
   "scripts": {
     "lint": "eslint \"./index.js\"",
