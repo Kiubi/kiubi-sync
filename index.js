@@ -104,15 +104,15 @@ class ftpWrapper {
 	 * Constructor
 	 *
 	 * @param {Object} params {
-	 *     					port: Number, // Port number
-	 *     					host: String, // Hostname
+	 *     					port: Number, // Port number, default 21
+	 *     					host: String, // Hostname, default "ftp.kiubi-web.com"
 	 *     					user: String, // Username
 	 *     					password: String, // Password
 	 * 					}
 	 */
 	constructor(params) {
-		this.port = params.port;
-		this.host = params.host;
+		this.port = params.port || 21;
+		this.host = params.host || 'ftp.kiubi-web.com';
 		this.user = params.user;
 		this.password = params.password;
 		this.ftpClient = new FTP.Client();
