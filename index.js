@@ -2,7 +2,7 @@ const FTP = require('basic-ftp');
 const { debounce } = require('lodash');
 const byteSize = require('byte-size');
 
-const { join } = require('path');
+const { join, basename, dirname } = require('path');
 const { mkdir, readdir, stat } = require('fs');
 const { promisify } = require('util');
 const fsReadDir = promisify(readdir);
@@ -244,7 +244,7 @@ class ftpWrapper {
 	 */
 	pushFile(path) {
 
-		const filename = path.split('/').pop();
+		const filename = basename(path);
 		if (isForbiddenFilename(filename)) {
 			return;
 		}
@@ -268,7 +268,7 @@ class ftpWrapper {
 	 */
 	deleteFile(path) {
 
-		const filename = path.split('/').pop();
+		const filename = basename(path);
 		if (isForbiddenFilename(filename)) {
 			return;
 		}
@@ -317,8 +317,8 @@ class ftpWrapper {
 			const timer = new Timer();
 			timer.start(this.ftpClient);
 
-			const dirname = path.split('/').slice(0, -1).join('/');
-			await this.ftpClient.ensureDir(`/${dirname}`);
+			const baseDir = dirname(path);
+			await this.ftpClient.ensureDir(`/${baseDir}`);
 			await this.ftpClient.uploadFrom(path, `/${path}`);
 			timer.stop();
 		}
