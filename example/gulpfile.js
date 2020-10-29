@@ -1,6 +1,7 @@
 const { watch, src, pipe, dest, parallel, series } = require('gulp');
 const minify = require('gulp-minify');
 const concat = require('gulp-concat');
+const cleanCSS = require('gulp-clean-css');
 const kSync = require('kiubi-sync');
 
 const config = require('./config.json');
@@ -53,6 +54,7 @@ function compressJS() {
 	        'bootstrap-datetimepicker.min.css',
 	        'aos.min.css',
 	    ], {cwd:'theme/fr/assets/css'})
+	    .pipe(cleanCSS())
 	    .pipe(concat('compact.min.css'))
 	    .pipe(dest('theme/fr/assets/css'))
 	}
