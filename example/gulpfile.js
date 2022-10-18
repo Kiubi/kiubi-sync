@@ -40,7 +40,8 @@ function compressJS() {
 	        'kiubi.js'
 	    ], {cwd:'theme/fr/assets/js'})
 	    .pipe(minify({
-	        ignoreFiles: ['*.min.js']
+	        ignoreFiles: ['*.min.js'],
+			noSource: true
 	    }))
 	    .pipe(concat('compact.min.js'))
 	    .pipe(dest('theme/fr/assets/js'))
