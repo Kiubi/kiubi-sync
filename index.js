@@ -1,5 +1,5 @@
 const FTP = require('basic-ftp');
-const { debounce } = require('lodash');
+const { debounce, filter, endsWith } = require('lodash');
 const byteSize = require('byte-size');
 
 const { join, basename, dirname, sep, posix } = require('path');
@@ -185,10 +185,13 @@ class ftpWrapper {
 	 * Pull all files from the remote ftp server
 	 *
 	 * @param {String} path
+	 * @param {Object} options : 
+	 * 					- {String}[] skipFiles : Ignore Extensions
+	 * 					- {Number} skipSize : MaxSize
 	 * @returns {Promise<undefined>}
 	 */
-	pullAll(path) {
-		return this.downloadToDir(path).catch((error)=>{
+	pullAll(path, options) {
+		return this.downloadToDir(path, options).catch((error)=>{
 			console.log(chalk.red('Erreur'), error);
 		}).finally(()=>this.close());
 	}
@@ -397,19 +400,44 @@ class ftpWrapper {
 	 * Pull a directory from the remote FTP server
 	 *
 	 * @param {String} path
+	 * @param {Object} options
 	 * @returns {Promise<never>}
 	 */
-	async downloadToDir(path) {
+	async downloadToDir(path, options) {
 
 		try {
 			await this.connect();
 			const timer = new Timer();
+					
+			var _parseList = this.ftpClient.parseList;
+			this.ftpClient.parseList = function (rawList) {
+				var fileList = filter(_parseList(rawList), function(file){
+					if (options.skipSize && options.skipSize > 0 && file.size >= options.skipSize) {
+						console.log(chalk.magenta('S'), file.name);
+						return false;
+					}
+					if (options.skipFiles && options.skipFiles.length && file.type === 1) {
+						for(var i = 0; i<= options.skipFiles.length; i++) {
+							if (endsWith(file.name.toLowerCase(), '.' + options.skipFiles[i])) {
+								console.log(chalk.magenta('S'), file.name);
+								return false;
+							}
+						}						
+					}
+					return true;
+				});
+				return fileList;
+			}
+			
 			timer.start(this.ftpClient);
 			await this._downloadReq(path);
 			timer.stop();
 		}
 		catch(error) {
 			return Promise.reject(error.message);
+		}
+		finally {
+			this.ftpClient.parseList = _parseList;
 		}
 
 	}
