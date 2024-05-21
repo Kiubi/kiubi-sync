@@ -16,6 +16,6 @@
     "gulp-clean-css": "^4.3.0",
     "gulp-concat": "^2.6.1",
     "gulp-minify": "^3.0.0",
-    "kiubi-sync": "^0.1.3"
+    "kiubi-sync": "^0.1.4"
   }
 }
