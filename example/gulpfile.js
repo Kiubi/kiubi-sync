@@ -16,7 +16,7 @@ function pullTask() {
 }
 
 function pullFastTask() {
-	return ftp.pullAll('theme', {
+	return sync.pullAll('theme', {
 		skipFiles : ['pdf'],  // skip files with ".pdf" extension
 		skipSize : 1048576 // skip files > 1Mo
 	});
