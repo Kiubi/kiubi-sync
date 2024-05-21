@@ -405,6 +405,8 @@ class ftpWrapper {
 	 */
 	async downloadToDir(path, options) {
 
+		options = options || {};
+
 		try {
 			await this.connect();
 			const timer = new Timer();
