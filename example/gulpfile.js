@@ -15,6 +15,13 @@ function pullTask() {
 	return sync.pullAll('theme');
 }
 
+function pullFastTask() {
+	return ftp.pullAll('theme', {
+		skipFiles : ['pdf'],  // skip files with ".pdf" extension
+		skipSize : 1048576 // skip files > 1Mo
+	});
+}
+
 function deployTask() {
 	return sync.pushAll('theme');
 }
@@ -61,6 +68,7 @@ function compressJS() {
 	}
 
 exports.pull = pullTask;
+exports.pullFast = pullFastTask;
 
 exports.deploy = series(parallel(compressJS, compressCSS), deployTask);
 
