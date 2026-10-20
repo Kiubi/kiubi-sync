@@ -262,6 +262,98 @@ describe('synchronisation avec un serveur FTP', () => {
 
 	});
 
+	describe('localDir', () => {
+
+		it('pullAll() rapatrie /theme dans le dossier local configuré', async () => {
+			writeTree(remoteDir, {
+				'theme/theme.xml': '<theme/>',
+				'theme/fr/style.css': 'body {}',
+				'mediatheque/photo.jpg': 'x',
+			});
+
+			await createWrapper({ localDir: 'src/mon-theme' }).pullAll();
+
+			assertNoErrorLogged();
+			assert.deepEqual(readTree(localDir), {
+				'src/mon-theme/theme.xml': '<theme/>',
+				'src/mon-theme/fr/style.css': 'body {}',
+			});
+		});
+
+		it('pullAll(options) applique les options au dossier local configuré', async () => {
+			writeTree(remoteDir, {
+				'theme/style.css': 'body {}',
+				'theme/doc.pdf': 'pdf',
+			});
+
+			await createWrapper({ localDir: 'src/mon-theme' }).pullAll({ skipFiles: ['pdf'] });
+
+			assertNoErrorLogged();
+			assert.deepEqual(Object.keys(readTree(localDir)), ['src/mon-theme/style.css']);
+		});
+
+		it('pullAll(chemin) ne rapatrie qu\'un sous-dossier', async () => {
+			writeTree(remoteDir, {
+				'theme/style.css': 'body {}',
+				'theme/fr/index.html': '<html></html>',
+			});
+
+			await createWrapper({ localDir: 'src/mon-theme' }).pullAll('src/mon-theme/fr');
+
+			assertNoErrorLogged();
+			assert.deepEqual(Object.keys(readTree(localDir)), ['src/mon-theme/fr/index.html']);
+		});
+
+		it('accepte un dossier local absolu', async () => {
+			writeTree(remoteDir, {
+				'theme/style.css': 'body {}',
+			});
+
+			await createWrapper({ localDir: join(localDir, 'absolu') }).pullAll();
+
+			assertNoErrorLogged();
+			assert.deepEqual(Object.keys(readTree(localDir)), ['absolu/style.css']);
+		});
+
+		it('pushAll() publie le dossier local configuré dans /theme', async () => {
+			writeTree(localDir, {
+				'src/mon-theme/theme.xml': '<theme/>',
+				'src/mon-theme/fr/style.css': 'body {}',
+			});
+
+			await createWrapper({ localDir: 'src/mon-theme' }).pushAll();
+
+			assertNoErrorLogged();
+			assert.deepEqual(readTree(remoteDir), {
+				'theme/theme.xml': '<theme/>',
+				'theme/fr/style.css': 'body {}',
+			});
+		});
+
+		it('pushAll(chemin) crée le dossier distant s\'il n\'existe pas', async () => {
+			writeTree(localDir, {
+				'src/mon-theme/fr/nouveau/style.css': 'body {}',
+			});
+
+			await createWrapper({ localDir: 'src/mon-theme' }).pushAll('src/mon-theme/fr/nouveau');
+
+			assertNoErrorLogged();
+			assert.deepEqual(Object.keys(readTree(remoteDir)), ['theme/fr/nouveau/style.css']);
+		});
+
+		it('affiche une erreur pour un chemin hors du dossier local, sans se connecter', async (t) => {
+			const ftp = createWrapper({ localDir: 'src/mon-theme' });
+			const access = t.mock.method(ftp.ftpClient, 'access');
+
+			await ftp.pushAll('autre');
+			await ftp.pullAll('autre');
+
+			assert.equal(loggedErrors().length, 2);
+			assert.equal(access.mock.callCount(), 0);
+		});
+
+	});
+
 	describe('ftpRmdir', () => {
 
 		it('le serveur de test refuse CDUP, comme le serveur Kiubi', async () => {

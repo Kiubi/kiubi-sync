@@ -4,16 +4,38 @@ const { join } = require('path');
 const { mkdtempSync, rmSync, statSync } = require('fs');
 const { tmpdir } = require('os');
 
-const { toFtpPath, isForbiddenFilename, isForbiddenPath, ensureLocalDirectory } = require('../src/utils');
+const { toRelativePath, isForbiddenFilename, isForbiddenPath, ensureLocalDirectory } = require('../src/utils');
 
-describe('toFtpPath', () => {
+describe('toRelativePath', () => {
 
-	it('préfixe le chemin par /', () => {
-		assert.equal(toFtpPath('theme'), '/theme');
+	it('renvoie le chemin relatif à la racine', () => {
+		assert.equal(toRelativePath('theme', 'theme/fr/style.css'), 'fr/style.css');
+		assert.equal(toRelativePath('src/kiubi', 'src/kiubi/fr'), 'fr');
+	});
+
+	it('renvoie une chaîne vide pour la racine elle-même', () => {
+		assert.equal(toRelativePath('theme', 'theme'), '');
+		assert.equal(toRelativePath('theme', './theme/'), '');
 	});
 
 	it('convertit les séparateurs locaux en séparateurs POSIX', () => {
-		assert.equal(toFtpPath(join('theme', 'fr', 'assets', 'style.css')), '/theme/fr/assets/style.css');
+		assert.equal(toRelativePath('theme', join('theme', 'fr', 'assets', 'style.css')), 'fr/assets/style.css');
+	});
+
+	it('accepte les chemins absolus', () => {
+		assert.equal(toRelativePath(join(process.cwd(), 'theme'), 'theme/fr/a.css'), 'fr/a.css');
+		assert.equal(toRelativePath('theme', join(process.cwd(), 'theme', 'fr', 'a.css')), 'fr/a.css');
+	});
+
+	it('renvoie null pour un chemin hors de la racine', () => {
+		assert.equal(toRelativePath('theme', 'other/style.css'), null);
+		assert.equal(toRelativePath('theme', 'themes/style.css'), null);
+		assert.equal(toRelativePath('src/kiubi', 'src'), null);
+		assert.equal(toRelativePath('theme', 'theme/../secret.txt'), null);
+	});
+
+	it('ne confond pas un nom commençant par .. avec le dossier parent', () => {
+		assert.equal(toRelativePath('.', '..notes/a.txt'), '..notes/a.txt');
 	});
 
 });

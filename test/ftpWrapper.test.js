@@ -41,6 +41,7 @@ describe('ftpWrapper', () => {
 			const ftp = new ftpWrapper({ user: 'user', password: 'password' });
 			assert.equal(ftp.host, 'ftp.kiubi-web.com');
 			assert.equal(ftp.port, 21);
+			assert.equal(ftp.localDir, 'theme');
 			assert.ok(ftp.ftpClient instanceof FTP.Client);
 		});
 
@@ -96,6 +97,81 @@ describe('ftpWrapper', () => {
 			watcher.emit('unlink', 'theme/.git/index');
 			watcher.emit('unlinkDir', 'theme/.git/refs');
 			watcher.emit('unlinkDir', 'theme/.cache');
+
+			assert.equal(add.mock.callCount(), 0);
+		});
+
+	});
+
+	describe('localDir', () => {
+
+		function createLocalDirWrapper(localDir, client = createClient()) {
+			return new ftpWrapper({ user: 'user', password: 'password', localDir: localDir, client: client });
+		}
+
+		it('publie un fichier du dossier local dans /theme', async (t) => {
+			const client = createClient();
+			const ensureDir = t.mock.method(client, 'ensureDir');
+			const uploadFrom = t.mock.method(client, 'uploadFrom');
+
+			await createLocalDirWrapper('src/mon-theme', client).ftpPut('src/mon-theme/fr/style.css');
+
+			assert.deepEqual(ensureDir.mock.calls[0].arguments, ['/theme/fr']);
+			assert.deepEqual(uploadFrom.mock.calls[0].arguments, ['src/mon-theme/fr/style.css', '/theme/fr/style.css']);
+		});
+
+		it('supprime le fichier correspondant dans /theme', async (t) => {
+			const client = createClient();
+			const remove = t.mock.method(client, 'remove');
+
+			await createLocalDirWrapper('src/mon-theme', client).ftpRemove('src/mon-theme/fr/old.css');
+
+			assert.deepEqual(remove.mock.calls[0].arguments, ['/theme/fr/old.css']);
+		});
+
+		it('rejette un fichier hors du dossier local', async (t) => {
+			const client = createClient();
+			const uploadFrom = t.mock.method(client, 'uploadFrom');
+
+			await assert.rejects(createLocalDirWrapper('src/mon-theme', client).ftpPut('theme/style.css'), /n'est pas dans le dossier du thème/);
+			assert.equal(uploadFrom.mock.callCount(), 0);
+		});
+
+		it('ignore, avec un avertissement, les événements hors du dossier local', (t) => {
+			const ftp = createLocalDirWrapper('src/mon-theme');
+			const add = t.mock.method(ftp.queue, 'add', () => {});
+			const watcher = new EventEmitter();
+
+			ftp.watch(watcher);
+			watcher.emit('change', 'src/mon-theme/fr/a.css');
+			watcher.emit('change', 'src/autre/b.css');
+			watcher.emit('unlinkDir', 'src');
+
+			assert.deepEqual(add.mock.calls.map((call) => call.arguments), [['ftpPut', 'src/mon-theme/fr/a.css']]);
+			const warnings = console.log.mock.calls.filter((call) => String(call.arguments[0]).includes('Ignoré'));
+			assert.equal(warnings.length, 2);
+		});
+
+		it('n\'applique la règle des fichiers interdits qu\'à la partie sous le dossier local', (t) => {
+			const ftp = createLocalDirWrapper('/home/user/.projets/site/theme');
+			const add = t.mock.method(ftp.queue, 'add', () => {});
+			const watcher = new EventEmitter();
+
+			ftp.watch(watcher);
+			watcher.emit('change', '/home/user/.projets/site/theme/fr/a.css');
+			watcher.emit('change', '/home/user/.projets/site/theme/.git/config');
+
+			assert.deepEqual(add.mock.calls.map((call) => call.arguments), [['ftpPut', '/home/user/.projets/site/theme/fr/a.css']]);
+		});
+
+		it('ne supprime jamais le thème distant si le dossier local disparaît', (t) => {
+			const ftp = createLocalDirWrapper('src/mon-theme');
+			const add = t.mock.method(ftp.queue, 'add', () => {});
+			const watcher = new EventEmitter();
+
+			ftp.watch(watcher);
+			watcher.emit('unlinkDir', 'src/mon-theme');
+			watcher.emit('unlinkDir', 'src/mon-theme/');
 
 			assert.equal(add.mock.callCount(), 0);
 		});

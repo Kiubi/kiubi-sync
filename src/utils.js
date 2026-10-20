@@ -1,17 +1,22 @@
-const { sep, posix } = require('path');
+const { sep, posix, relative, resolve, isAbsolute } = require('path');
 const { mkdir, stat } = require('fs');
 const { promisify } = require('util');
 const fsMkDir = promisify(mkdir);
 const fsStat = promisify(stat);
 
 /**
- * Convert local path into ftp file systeme (POSIX)
+ * Path relative to a root directory, with POSIX separators
  *
+ * @param {String} root
  * @param {String} path
- * @returns {String}
+ * @returns {String|null} '' for the root itself, null if the path is outside the root
  */
-function toFtpPath(path) {
-	return '/' + path.split(sep).join(posix.sep);
+function toRelativePath(root, path) {
+	const relativePath = relative(resolve(root), resolve(path));
+	if (relativePath === '..' || relativePath.startsWith('..' + sep) || isAbsolute(relativePath)) {
+		return null;
+	}
+	return relativePath.split(sep).join(posix.sep);
 }
 
 /**
@@ -52,4 +57,4 @@ async function ensureLocalDirectory(path) {
 	}
 }
 
-module.exports = { toFtpPath, isForbiddenFilename, isForbiddenPath, ensureLocalDirectory };
+module.exports = { toRelativePath, isForbiddenFilename, isForbiddenPath, ensureLocalDirectory };

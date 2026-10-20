@@ -2,7 +2,7 @@ const FTP = require('basic-ftp');
 const { filter, endsWith } = require('lodash');
 const byteSize = require('byte-size');
 
-const { join, dirname, posix } = require('path');
+const { join, posix } = require('path');
 const { readdir, stat, utimes } = require('fs');
 const { promisify } = require('util');
 const fsReadDir = promisify(readdir);
@@ -11,7 +11,10 @@ const fsUtimes = promisify(utimes);
 
 const chalk = require('chalk');
 
-const { toFtpPath, isForbiddenFilename, isForbiddenPath, ensureLocalDirectory } = require('./src/utils');
+const { toRelativePath, isForbiddenFilename, isForbiddenPath, ensureLocalDirectory } = require('./src/utils');
+
+// Remote directory of the theme on the Kiubi FTP server
+const REMOTE_DIR = '/theme';
 const CommandQueue = require('./src/commandQueue');
 
 byteSize.defaultOptions({
@@ -89,6 +92,7 @@ class ftpWrapper {
 	 *     					host: String, // Hostname, default "ftp.kiubi-web.com"
 	 *     					user: String, // Username
 	 *     					password: String, // Password
+	 *     					localDir: String, // Local directory of the theme, default "theme"
 	 *     					client: FTP.Client, // FTP client, default new FTP.Client()
 	 * 					}
 	 */
@@ -97,6 +101,7 @@ class ftpWrapper {
 		this.host = params.host || 'ftp.kiubi-web.com';
 		this.user = params.user;
 		this.password = params.password;
+		this.localDir = params.localDir || 'theme';
 		this.ftpClient = params.client || new FTP.Client();
 
 		this.queue = new CommandQueue((command) => this.runCommand(command));
@@ -154,14 +159,18 @@ class ftpWrapper {
 	/**
 	 * Pull all files from the remote ftp server
 	 *
-	 * @param {String} path
-	 * @param {Object} options :
+	 * @param {String} [path] Local directory, default the whole local directory of the theme
+	 * @param {Object} [options] :
 	 * 					- {String}[] skipFiles : Ignore Extensions
 	 * 					- {Number} skipSize : MaxSize
 	 * @returns {Promise<undefined>}
 	 */
 	pullAll(path, options) {
-		return this.downloadToDir(path, options).catch((error)=>{
+		if (typeof path === 'object' && path !== null) {
+			options = path;
+			path = null;
+		}
+		return this.downloadToDir(path || this.localDir, options).catch((error)=>{
 			console.log(chalk.red('Erreur'), error);
 		}).finally(()=>this.close());
 	}
@@ -169,11 +178,11 @@ class ftpWrapper {
 	/**
 	 * Push all files to the remote ftp server
 	 *
-	 * @param {String} path
+	 * @param {String} [path] Local directory, default the whole local directory of the theme
 	 * @returns {Promise<undefined>}
 	 */
 	pushAll(path) {
-		return this.deploy(path).catch((error)=>{
+		return this.deploy(path || this.localDir).catch((error)=>{
 			console.log(chalk.red('Erreur'), error);
 		}).finally(()=>this.close());
 	}
@@ -203,7 +212,7 @@ class ftpWrapper {
 	 * @param {String} path
 	 */
 	pushFile(path) {
-		if (isForbiddenPath(path)) {
+		if (!this._isSyncable(path)) {
 			return;
 		}
 		this.queue.add('ftpPut', path);
@@ -215,7 +224,7 @@ class ftpWrapper {
 	 * @param {String} path
 	 */
 	deleteFile(path) {
-		if (isForbiddenPath(path)) {
+		if (!this._isSyncable(path)) {
 			return;
 		}
 		this.queue.add('ftpRemove', path);
@@ -227,10 +236,42 @@ class ftpWrapper {
 	 * @param {String} path
 	 */
 	deleteDir(path) {
-		if (isForbiddenPath(path)) {
+		// Never remove the whole remote theme, even if the local directory disappears
+		if (!this._isSyncable(path) || toRelativePath(this.localDir, path) === '') {
 			return;
 		}
 		this.queue.add('ftpRmdir', path, false);
+	}
+
+	/**
+	 * Test if a local path must be synchronised
+	 *
+	 * @param {String} path
+	 * @returns {Boolean}
+	 * @private
+	 */
+	_isSyncable(path) {
+		const relativePath = toRelativePath(this.localDir, path);
+		if (relativePath === null) {
+			console.log(chalk.yellow('Ignoré'), `${path} (hors de ${this.localDir})`);
+			return false;
+		}
+		return !isForbiddenPath(relativePath);
+	}
+
+	/**
+	 * Remote path of a local path
+	 *
+	 * @param {String} path Local path, inside the local directory of the theme
+	 * @returns {String} Absolute remote path
+	 * @private
+	 */
+	_toRemotePath(path) {
+		const relativePath = toRelativePath(this.localDir, path);
+		if (relativePath === null) {
+			throw new Error(`${path} n'est pas dans le dossier du thème (${this.localDir})`);
+		}
+		return posix.join(REMOTE_DIR, relativePath);
 	}
 
 	/** Low level FTP Command **/
@@ -248,13 +289,13 @@ class ftpWrapper {
 		console.log(`${prefix} ${path}`);
 
 		try {
+			const remotePath = this._toRemotePath(path);
 			await this.connect();
 			const timer = new Timer();
 			timer.start(this.ftpClient);
 
-			const baseDir = dirname(path);
-			await this.ftpClient.ensureDir(toFtpPath(baseDir));
-			await this.ftpClient.uploadFrom(path, toFtpPath(path));
+			await this.ftpClient.ensureDir(posix.dirname(remotePath));
+			await this.ftpClient.uploadFrom(path, remotePath);
 			timer.stop();
 		}
 		catch(error) {
@@ -277,7 +318,7 @@ class ftpWrapper {
 
 		try {
 			await this.connect();
-			await this.ftpClient.remove(toFtpPath(path));
+			await this.ftpClient.remove(this._toRemotePath(path));
 		}
 		catch(error) {
 
@@ -304,7 +345,7 @@ class ftpWrapper {
 
 		try {
 			await this.connect();
-			await this._removeDir(toFtpPath(path));
+			await this._removeDir(this._toRemotePath(path));
 		}
 		catch(error) {
 			return Promise.reject(error.message);
@@ -385,6 +426,7 @@ class ftpWrapper {
 		const _parseList = this.ftpClient.parseList;
 
 		try {
+			this._toRemotePath(path);
 			await this.connect();
 			const timer = new Timer();
 
@@ -429,9 +471,11 @@ class ftpWrapper {
 	async deploy(path) {
 
 		try {
+			const remotePath = this._toRemotePath(path);
 			await this.connect();
 			const timer = new Timer();
 			timer.start(this.ftpClient);
+			await this.ftpClient.ensureDir(remotePath);
 			await this._uploadToWorkingDir(path);
 			timer.stop();
 		}
@@ -458,10 +502,10 @@ class ftpWrapper {
 			const stats = await fsStat(fullPath);
 			if (stats.isFile()) {
 				console.log(chalk.green('>'), fullPath);
-				await this.ftpClient.uploadFrom(fullPath, toFtpPath(fullPath));
+				await this.ftpClient.uploadFrom(fullPath, this._toRemotePath(fullPath));
 			}
 			else if (stats.isDirectory()) {
-				await this.ftpClient.ensureDir(toFtpPath(fullPath));
+				await this.ftpClient.ensureDir(this._toRemotePath(fullPath));
 				await this._uploadToWorkingDir(fullPath);
 			}
 		}
@@ -477,7 +521,8 @@ class ftpWrapper {
 	async _downloadReq(localDirPath) {
 		await ensureLocalDirectory(localDirPath);
 
-		await this.ftpClient.cd(toFtpPath(localDirPath));
+		const remoteDirPath = this._toRemotePath(localDirPath);
+		await this.ftpClient.cd(remoteDirPath);
 		for (const file of await this.ftpClient.list()) {
 			if (isForbiddenFilename(file.name)) {
 				continue;
@@ -486,7 +531,7 @@ class ftpWrapper {
 			if (file.isDirectory) {
 				await this.ftpClient.cd(file.name);
 				await this._downloadReq(localPath);
-				await this.ftpClient.cd(toFtpPath(localDirPath));
+				await this.ftpClient.cd(remoteDirPath);
 			}
 			else if (file.isFile) {
 				// Skip donwload if local and remote file have same size and
