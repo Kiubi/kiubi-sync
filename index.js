@@ -1,15 +1,17 @@
 const FTP = require('basic-ftp');
-const { debounce, filter, endsWith } = require('lodash');
+const { filter, endsWith } = require('lodash');
 const byteSize = require('byte-size');
 
-const { join, basename, dirname, sep, posix } = require('path');
-const { mkdir, readdir, stat } = require('fs');
+const { join, basename, dirname } = require('path');
+const { readdir, stat } = require('fs');
 const { promisify } = require('util');
 const fsReadDir = promisify(readdir);
-const fsMkDir = promisify(mkdir);
 const fsStat = promisify(stat);
 
 const chalk = require('chalk');
+
+const { toFtpPath, isForbiddenFilename, ensureLocalDirectory } = require('./src/utils');
+const CommandQueue = require('./src/commandQueue');
 
 byteSize.defaultOptions({
 	units: 'iec',
@@ -18,38 +20,6 @@ byteSize.defaultOptions({
 		return this.value + this.unit;
 	},
 });
-
-/**
- * Convert local path into ftp file systeme (POSIX)
- *
- * @param {String} path
- * @returns {String}
- */
-function toFtpPath(path) {
-	return '/'+path.split(sep).join(posix.sep)
-}
-
-/**
- * Ensure local directory exists
- *
- * @param {String} path
- * @returns {Promise<void>}
- */
-async function ensureLocalDirectory(path) {
-	try {
-		await fsStat(path);
-	}
-	catch(err) {
-		await fsMkDir(path, { recursive: true });
-	}
-}
-
-/**
- * Test filenames that ftp server will not allowed
- */
-function isForbiddenFilename(filename) {
-	return (filename.match(/^\./) !== null || filename.match(/\.LCK$/) !== null);
-}
 
 /**
  * Handle transfert summary
@@ -118,6 +88,7 @@ class ftpWrapper {
 	 *     					host: String, // Hostname, default "ftp.kiubi-web.com"
 	 *     					user: String, // Username
 	 *     					password: String, // Password
+	 *     					client: FTP.Client, // FTP client, default new FTP.Client()
 	 * 					}
 	 */
 	constructor(params) {
@@ -125,11 +96,9 @@ class ftpWrapper {
 		this.host = params.host || 'ftp.kiubi-web.com';
 		this.user = params.user;
 		this.password = params.password;
-		this.ftpClient = new FTP.Client();
+		this.ftpClient = params.client || new FTP.Client();
 
-		this.deflush = debounce(this.flush, 300);
-		this.lock = false;
-		this.stack = [];
+		this.queue = new CommandQueue((command) => this.runCommand(command));
 	}
 
 	/**
@@ -185,7 +154,7 @@ class ftpWrapper {
 	 * Pull all files from the remote ftp server
 	 *
 	 * @param {String} path
-	 * @param {Object} options : 
+	 * @param {Object} options :
 	 * 					- {String}[] skipFiles : Ignore Extensions
 	 * 					- {Number} skipSize : MaxSize
 	 * @returns {Promise<undefined>}
@@ -209,45 +178,22 @@ class ftpWrapper {
 	}
 
 	/**
-	 * Flush current ftp command stack
+	 * Run a queued ftp command
+	 *
+	 * @param {Object} command { cmd, path }
+	 * @returns {Promise<void>}
 	 */
-	flush() {
-
-		if (this.stack.length === 0) return;
-
-		if (this.lock) {
-			this.deflush();
-			return;
+	runCommand(command) {
+		switch(command.cmd) {
+		case 'ftpPut':
+			return this.ftpPut(command.path);
+		case 'ftpRemove':
+			return this.ftpRemove(command.path);
+		case 'ftpRmdir':
+			return this.ftpRmdir(command.path);
+		default:
+			return Promise.reject('Commande inconnue');
 		}
-		this.lock = true;
-
-		console.log('Publication des modifications...');
-
-		this.stack.reduce((p, command) => {
-			return p.then(() => {
-
-				switch(command.cmd) {
-					case 'ftpPut':
-						return this.ftpPut(command.path);
-					case 'ftpRemove':
-						return this.ftpRemove(command.path);
-					case 'ftpRmdir':
-						return this.ftpRmdir(command.path);
-					default:
-						return Promise.reject('Commande inconnue');
-				}
-			});
-		}, Promise.resolve())
-			.catch((e) => {
-				console.log(chalk.red('Erreur de transfert !'));
-				console.log(e);
-			})
-			.finally(() => {
-				this.lock = false;
-				this.deflush();
-			});
-		this.stack = [];
-
 	}
 
 	/**
@@ -256,22 +202,10 @@ class ftpWrapper {
 	 * @param {String} path
 	 */
 	pushFile(path) {
-
-		const filename = basename(path);
-		if (isForbiddenFilename(filename)) {
+		if (isForbiddenFilename(basename(path))) {
 			return;
 		}
-
-		const index = this.stack.findIndex((cmd) => cmd.cmd == 'ftpPut' && cmd.path == path);
-		if (index >= 0) {
-			return;
-		}
-
-		this.stack.push({
-			'cmd':'ftpPut',
-			'path':path,
-		});
-		this.deflush();
+		this.queue.add('ftpPut', path);
 	}
 
 	/**
@@ -280,22 +214,10 @@ class ftpWrapper {
 	 * @param {String} path
 	 */
 	deleteFile(path) {
-
-		const filename = basename(path);
-		if (isForbiddenFilename(filename)) {
+		if (isForbiddenFilename(basename(path))) {
 			return;
 		}
-
-		const index = this.stack.findIndex((cmd) => cmd.cmd == 'ftpRemove' && cmd.path == path);
-		if (index >= 0) {
-			return;
-		}
-
-		this.stack.push({
-			'cmd':'ftpRemove',
-			'path':path,
-		});
-		this.deflush();
+		this.queue.add('ftpRemove', path);
 	}
 
 	/**
@@ -304,11 +226,7 @@ class ftpWrapper {
 	 * @param {String} path
 	 */
 	deleteDir(path) {
-		this.stack.push({
-			'cmd':'ftpRmdir',
-			'path':path,
-		});
-		this.deflush();
+		this.queue.add('ftpRmdir', path, false);
 	}
 
 	/** Low level FTP Command **/
@@ -406,31 +324,31 @@ class ftpWrapper {
 	async downloadToDir(path, options) {
 
 		options = options || {};
+		const _parseList = this.ftpClient.parseList;
 
 		try {
 			await this.connect();
 			const timer = new Timer();
-					
-			var _parseList = this.ftpClient.parseList;
-			this.ftpClient.parseList = function (rawList) {
-				var fileList = filter(_parseList(rawList), function(file){
+
+			this.ftpClient.parseList = function(rawList) {
+				const fileList = filter(_parseList(rawList), function(file) {
 					if (options.skipSize && options.skipSize > 0 && file.size >= options.skipSize) {
 						console.log(chalk.magenta('S'), file.name);
 						return false;
 					}
 					if (options.skipFiles && options.skipFiles.length && file.type === 1) {
-						for(var i = 0; i<= options.skipFiles.length; i++) {
+						for(let i = 0; i <= options.skipFiles.length; i++) {
 							if (endsWith(file.name.toLowerCase(), '.' + options.skipFiles[i])) {
 								console.log(chalk.magenta('S'), file.name);
 								return false;
 							}
-						}						
+						}
 					}
 					return true;
 				});
 				return fileList;
-			}
-			
+			};
+
 			timer.start(this.ftpClient);
 			await this._downloadReq(path);
 			timer.stop();
