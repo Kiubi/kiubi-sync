@@ -1,5 +1,10 @@
 # kiubi-sync
 
+[![npm](https://img.shields.io/npm/v/kiubi-sync)](https://www.npmjs.com/package/kiubi-sync)
+[![license](https://img.shields.io/npm/l/kiubi-sync)](LICENSE)
+[![tests](https://github.com/Kiubi/kiubi-sync/actions/workflows/test.yml/badge.svg)](https://github.com/Kiubi/kiubi-sync/actions/workflows/test.yml)
+[![coverage](https://codecov.io/gh/Kiubi/kiubi-sync/graph/badge.svg)](https://codecov.io/gh/Kiubi/kiubi-sync)
+
 > Aide à la publication de thème graphique personnalisé sur Kiubi.
 
 ## Installation
@@ -26,11 +31,11 @@ function watchTask() {
 }
 
 function pullTask() {
-	return ftp.pullAll('theme');
+	return ftp.pullAll();
 }
 
 function deployTask() {
-	return ftp.pushAll('theme');
+	return ftp.pushAll();
 }
 
 exports.watch = watchTask;
@@ -40,9 +45,31 @@ exports.deploy = deployTask;
 exports.pull = pullTask;
 ```
 
+## Options
+
+* `user` **{String}**: Identifiant FTP
+* `password` **{String}**: Mot de passe FTP
+* `localDir` **{String}**: Dossier local du thème, relatif au répertoire courant ou absolu. Par défaut `theme`.
+* `host` **{String}**: Serveur FTP. Par défaut `ftp.kiubi-web.com`.
+* `port` **{Number}**: Port FTP. Par défaut `21`.
+
+Le dossier local correspond toujours au dossier `theme` du serveur FTP Kiubi. Pour travailler dans un autre dossier local :
+
+```js
+const ftp = new ftpWrapper({
+	user: 'MY-USER',
+	password: 'MY-PASSWORD',
+	localDir: 'src/mon-theme',
+});
+
+ftp.watch(watch('src/mon-theme/**', { events: 'all' }));
+```
+
+Les fichiers et dossiers cachés (`.git`, `.DS_Store`…) et les fichiers `.LCK` sont toujours ignorés.
+
 ## API
 
-### [watch](index.js#L163)
+### [watch](index.js#L148)
 
 Surveille et publie les modifications locales des fichiers du thème graphique.
 
@@ -56,13 +83,18 @@ Surveille et publie les modifications locales des fichiers du thème graphique.
 ftp.watch(gulp.watch('theme/**', { events: 'all' }));
 ```
 
-### [pullAll](index.js#L180)
+Les événements portant sur des fichiers hors du dossier local sont ignorés.
 
-Rapatrie en local tous les fichiers du thème graphique.
+### [pullAll](index.js#L168)
+
+Rapatrie en local tous les fichiers du thème graphique. Les fichiers inchangés (même taille, même date de modification) ne sont pas retéléchargés.
 
 **Params**
 
-* `path` **{String}**: Chemin
+* `path` **{String}**: Optionnel. Sous-dossier du dossier local à rapatrier. Par défaut tout le dossier local.
+* `options` **{Object}**: Optionnel.
+  * `skipFiles` **{String[]}**: Extensions à ignorer, par exemple `['pdf']`
+  * `skipSize` **{Number}**: Taille en octets à partir de laquelle un fichier est ignoré
 
 **Return**
 
@@ -71,16 +103,18 @@ Rapatrie en local tous les fichiers du thème graphique.
 **Example**
 
 ```js
-ftp.pullAll('theme');
+ftp.pullAll();
+ftp.pullAll({ skipFiles: ['pdf'], skipSize: 1048576 });
+ftp.pullAll('theme/fr/assets');
 ```
 
-### [pushAll](index.js#L192)
+### [pushAll](index.js#L184)
 
 Publie tous les fichiers du thème graphique.
 
 **Params**
 
-* `path` **{String}**: Chemin
+* `path` **{String}**: Optionnel. Sous-dossier du dossier local à publier. Par défaut tout le dossier local.
 
 **Return**
 
@@ -89,7 +123,8 @@ Publie tous les fichiers du thème graphique.
 **Example**
 
 ```js
-ftp.pushAll('theme');
+ftp.pushAll();
+ftp.pushAll('theme/fr/assets');
 ```
 
 ## À propos

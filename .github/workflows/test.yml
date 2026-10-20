@@ -1,0 +1,42 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        # node --test avec motifs de fichiers et --test-coverage-exclude : Node >= 22
+        node-version: [22, 24]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Couverture
+        if: matrix.node-version == 24
+        run: >
+          node --test --experimental-test-coverage --test-coverage-exclude="test/**"
+          --test-reporter=spec --test-reporter-destination=stdout
+          --test-reporter=lcov --test-reporter-destination=lcov.info
+          "test/**/*.test.js"
+
+      - name: Envoi de la couverture à Codecov
+        if: matrix.node-version == 24
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: lcov.info
+          fail_ci_if_error: false

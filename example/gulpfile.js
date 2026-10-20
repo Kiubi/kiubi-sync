@@ -7,31 +7,35 @@ const fs = require('fs');
 
 const config = require('./config.json');
 
+// Dossier local du thème, publié dans le dossier "theme" du FTP Kiubi
+const THEME_DIR = 'theme';
+
 const sync = new kSync({
 	user: config.user,
-	password: config.password
+	password: config.password,
+	localDir: THEME_DIR
 });
 
 function pullTask() {
-	return sync.pullAll('theme');
+	return sync.pullAll(THEME_DIR);
 }
 
 function pullFastTask() {
-	return sync.pullAll('theme', {
+	return sync.pullAll(THEME_DIR, {
 		skipFiles : ['pdf'],  // skip files with ".pdf" extension
 		skipSize : 1048576 // skip files > 1Mo
 	});
 }
 
 function deployTask() {
-	return sync.pushAll('theme');
+	return sync.pushAll(THEME_DIR);
 }
 
 function watchTask() {
-	sync.watch(watch('theme/**', { events: 'all' }));
+	sync.watch(watch(`${THEME_DIR}/**`, { events: 'all' }));
 	
-    watch(['theme/fr/assets/js/*.js', '!theme/fr/assets/js/compact.min.js'], { events: 'change' }, compressJS)
-    watch(['theme/fr/assets/css/*.css', '!theme/fr/assets/css/compact.min.css'], { events: 'change' }, compressCSS)
+    watch([`${THEME_DIR}/fr/assets/js/*.js`, `!${THEME_DIR}/fr/assets/js/compact.min.js`], { events: 'change' }, compressJS)
+    watch([`${THEME_DIR}/fr/assets/css/*.css`, `!${THEME_DIR}/fr/assets/css/compact.min.css`], { events: 'change' }, compressCSS)
 }
 
 async function pushTask(done) {
@@ -46,8 +50,8 @@ async function pushTask(done) {
 		return;
 	}
 	
-	if (filePath.substring(0, 6) !== 'theme/') {
-		console.log('Argument --file should begin with theme/, like "--file=theme/theme.xml"');
+	if (!filePath.startsWith(`${THEME_DIR}/`)) {
+		console.log(`Argument --file should begin with ${THEME_DIR}/, like "--file=${THEME_DIR}/theme.xml"`);
 		done();
 		return;
 	}
@@ -82,13 +86,13 @@ function compressJS() {
         'js.cookie.min.js',
         'underscore-min.js',
         'kiubi.js'
-    ], {cwd:'theme/fr/assets/js'})
+    ], {cwd:`${THEME_DIR}/fr/assets/js`})
     .pipe(minify({
         ignoreFiles: ['*.min.js'],
 		noSource: true
     }))
     .pipe(concat('compact.min.js'))
-    .pipe(dest('theme/fr/assets/js'))
+    .pipe(dest(`${THEME_DIR}/fr/assets/js`))
 }
 
 function compressCSS() {
@@ -98,10 +102,10 @@ function compressCSS() {
         'owl.carousel.min.css',
         'bootstrap-datetimepicker.min.css',
         'aos.min.css',
-    ], {cwd:'theme/fr/assets/css'})
+    ], {cwd:`${THEME_DIR}/fr/assets/css`})
     .pipe(cleanCSS())
     .pipe(concat('compact.min.css'))
-    .pipe(dest('theme/fr/assets/css'))
+    .pipe(dest(`${THEME_DIR}/fr/assets/css`))
 }
 
 exports.pull = pullTask;
