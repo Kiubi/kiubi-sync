@@ -4,9 +4,11 @@
   "description": "Aide à la publication de thème graphique personnalisé sur Kiubi",
   "main": "index.js",
   "scripts": {
-    "lint": "eslint \"./index.js\" \"./src/\"",
-    "lint-fix": "eslint --fix \"./index.js\" \"./src/\"",
-    "test": "npm run lint"
+    "lint": "eslint \"./index.js\" \"./src/\" \"./test/\"",
+    "lint-fix": "eslint --fix \"./index.js\" \"./src/\" \"./test/\"",
+    "test": "npm run lint && node --test \"test/**/*.test.js\"",
+    "test:unit": "node --test \"test/*.test.js\"",
+    "test:integration": "node --test \"test/integration/*.test.js\""
   },
   "author": "Sebastien BRAUN <sebastien@kiubi.com> (https://www.kiubi.com)",
   "homepage": "https://github.com/Kiubi/kiubi-sync",
@@ -22,6 +24,7 @@
     "lodash": "^4.17.20"
   },
   "devDependencies": {
-    "eslint": "^8.57.1"
+    "eslint": "^8.57.1",
+    "ftp-srv": "^4.6.3"
   }
 }

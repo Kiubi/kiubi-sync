@@ -3,10 +3,11 @@ const { filter, endsWith } = require('lodash');
 const byteSize = require('byte-size');
 
 const { join, basename, dirname } = require('path');
-const { readdir, stat } = require('fs');
+const { readdir, stat, utimes } = require('fs');
 const { promisify } = require('util');
 const fsReadDir = promisify(readdir);
 const fsStat = promisify(stat);
+const fsUtimes = promisify(utimes);
 
 const chalk = require('chalk');
 
@@ -337,7 +338,7 @@ class ftpWrapper {
 						return false;
 					}
 					if (options.skipFiles && options.skipFiles.length && file.type === 1) {
-						for(let i = 0; i <= options.skipFiles.length; i++) {
+						for(let i = 0; i < options.skipFiles.length; i++) {
 							if (endsWith(file.name.toLowerCase(), '.' + options.skipFiles[i])) {
 								console.log(chalk.magenta('S'), file.name);
 								return false;
@@ -430,10 +431,13 @@ class ftpWrapper {
 				try {
 					const stats = await fsStat(localPath);
 
-					if (stats.size === file.size && Math.abs(file.modifiedAt.getTime() - stats.atime.getTime()) < 1000) {
-						console.log(chalk.magenta('S'), localPath);
-						// skip file
-						continue;
+					if (stats.size === file.size) {
+						const remoteDate = await this._remoteModifiedAt(file);
+						if (remoteDate && Math.abs(remoteDate.getTime() - stats.mtime.getTime()) < 1000) {
+							console.log(chalk.magenta('S'), localPath);
+							// skip file
+							continue;
+						}
 					}
 				}
 				catch(error) {
@@ -442,7 +446,35 @@ class ftpWrapper {
 
 				console.log(chalk.green('<'), localPath);
 				await this.ftpClient.downloadTo(localPath, file.name);
+
+				// Align local modification date on the remote one, so the
+				// next pull can skip this file
+				const remoteDate = await this._remoteModifiedAt(file);
+				if (remoteDate) {
+					await fsUtimes(localPath, new Date(), remoteDate);
+				}
 			}
+		}
+	}
+
+	/**
+	 * Modification date of a remote file of the current directory
+	 *
+	 * Given by the listing when the server supports MLSD, otherwise asked with MDTM
+	 *
+	 * @param {FileInfo} file
+	 * @returns {Promise<Date|null>} null if the server can not tell
+	 * @private
+	 */
+	async _remoteModifiedAt(file) {
+		if (file.modifiedAt) {
+			return file.modifiedAt;
+		}
+		try {
+			return await this.ftpClient.lastMod(file.name);
+		}
+		catch(error) {
+			return null;
 		}
 	}
 

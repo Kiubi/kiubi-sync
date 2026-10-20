@@ -42,7 +42,7 @@ exports.pull = pullTask;
 
 ## API
 
-### [watch](index.js#L142)
+### [watch](index.js#L143)
 
 Surveille et publie les modifications locales des fichiers du thème graphique.
 
@@ -56,7 +56,7 @@ Surveille et publie les modifications locales des fichiers du thème graphique.
 ftp.watch(gulp.watch('theme/**', { events: 'all' }));
 ```
 
-### [pullAll](index.js#L162)
+### [pullAll](index.js#L163)
 
 Rapatrie en local tous les fichiers du thème graphique.
 
@@ -74,7 +74,7 @@ Rapatrie en local tous les fichiers du thème graphique.
 ftp.pullAll('theme');
 ```
 
-### [pushAll](index.js#L174)
+### [pushAll](index.js#L175)
 
 Publie tous les fichiers du thème graphique.
 
