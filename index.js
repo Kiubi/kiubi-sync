@@ -2,7 +2,7 @@ const FTP = require('basic-ftp');
 const { filter, endsWith } = require('lodash');
 const byteSize = require('byte-size');
 
-const { join, basename, dirname } = require('path');
+const { join, dirname } = require('path');
 const { readdir, stat, utimes } = require('fs');
 const { promisify } = require('util');
 const fsReadDir = promisify(readdir);
@@ -11,7 +11,7 @@ const fsUtimes = promisify(utimes);
 
 const chalk = require('chalk');
 
-const { toFtpPath, isForbiddenFilename, ensureLocalDirectory } = require('./src/utils');
+const { toFtpPath, isForbiddenFilename, isForbiddenPath, ensureLocalDirectory } = require('./src/utils');
 const CommandQueue = require('./src/commandQueue');
 
 byteSize.defaultOptions({
@@ -203,7 +203,7 @@ class ftpWrapper {
 	 * @param {String} path
 	 */
 	pushFile(path) {
-		if (isForbiddenFilename(basename(path))) {
+		if (isForbiddenPath(path)) {
 			return;
 		}
 		this.queue.add('ftpPut', path);
@@ -215,7 +215,7 @@ class ftpWrapper {
 	 * @param {String} path
 	 */
 	deleteFile(path) {
-		if (isForbiddenFilename(basename(path))) {
+		if (isForbiddenPath(path)) {
 			return;
 		}
 		this.queue.add('ftpRemove', path);
@@ -227,6 +227,9 @@ class ftpWrapper {
 	 * @param {String} path
 	 */
 	deleteDir(path) {
+		if (isForbiddenPath(path)) {
+			return;
+		}
 		this.queue.add('ftpRmdir', path, false);
 	}
 
@@ -394,9 +397,12 @@ class ftpWrapper {
 	async _uploadToWorkingDir(localDirPath) {
 		const files = await fsReadDir(localDirPath);
 		for (const file of files) {
+			if (isForbiddenFilename(file)) {
+				continue;
+			}
 			const fullPath = join(localDirPath, file);
 			const stats = await fsStat(fullPath);
-			if (stats.isFile() && !isForbiddenFilename(file)) {
+			if (stats.isFile()) {
 				console.log(chalk.green('>'), fullPath);
 				await this.ftpClient.uploadFrom(fullPath, toFtpPath(fullPath));
 			}
@@ -419,13 +425,16 @@ class ftpWrapper {
 
 		await this.ftpClient.cd(toFtpPath(localDirPath));
 		for (const file of await this.ftpClient.list()) {
+			if (isForbiddenFilename(file.name)) {
+				continue;
+			}
 			const localPath = join(localDirPath, file.name);
 			if (file.isDirectory) {
 				await this.ftpClient.cd(file.name);
 				await this._downloadReq(localPath);
 				await this.ftpClient.cd(toFtpPath(localDirPath));
 			}
-			else if (file.isFile && !isForbiddenFilename(file.name)) {
+			else if (file.isFile) {
 				// Skip donwload if local and remote file have same size and
 				// same modification within +/- 1sec
 				try {

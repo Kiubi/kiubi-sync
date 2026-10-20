@@ -15,13 +15,26 @@ function toFtpPath(path) {
 }
 
 /**
- * Test filenames that ftp server will not allowed
+ * Test names kiubi-sync must ignore (hidden or editor lock files and directories),
+ * whatever the local or remote side contains
  *
  * @param {String} filename
  * @returns {Boolean}
  */
 function isForbiddenFilename(filename) {
 	return (filename.match(/^\./) !== null || filename.match(/\.LCK$/) !== null);
+}
+
+/**
+ * Test if a path is, or is inside, an ignored file or directory
+ *
+ * @param {String} path
+ * @returns {Boolean}
+ */
+function isForbiddenPath(path) {
+	return path.split(/[\\/]/)
+		.filter((name) => name !== '' && name !== '.' && name !== '..')
+		.some(isForbiddenFilename);
 }
 
 /**
@@ -39,4 +52,4 @@ async function ensureLocalDirectory(path) {
 	}
 }
 
-module.exports = { toFtpPath, isForbiddenFilename, ensureLocalDirectory };
+module.exports = { toFtpPath, isForbiddenFilename, isForbiddenPath, ensureLocalDirectory };

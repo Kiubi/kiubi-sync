@@ -4,7 +4,7 @@ const { join } = require('path');
 const { mkdtempSync, rmSync, statSync } = require('fs');
 const { tmpdir } = require('os');
 
-const { toFtpPath, isForbiddenFilename, ensureLocalDirectory } = require('../src/utils');
+const { toFtpPath, isForbiddenFilename, isForbiddenPath, ensureLocalDirectory } = require('../src/utils');
 
 describe('toFtpPath', () => {
 
@@ -33,6 +33,32 @@ describe('isForbiddenFilename', () => {
 		assert.equal(isForbiddenFilename('style.css'), false);
 		assert.equal(isForbiddenFilename('theme.xml'), false);
 		assert.equal(isForbiddenFilename('LCK.txt'), false);
+	});
+
+});
+
+describe('isForbiddenPath', () => {
+
+	it('refuse un fichier interdit', () => {
+		assert.equal(isForbiddenPath('theme/fr/.DS_Store'), true);
+		assert.equal(isForbiddenPath('theme/fr/index.html.LCK'), true);
+	});
+
+	it('refuse tout ce qui se trouve dans un dossier interdit', () => {
+		assert.equal(isForbiddenPath('theme/.git/config'), true);
+		assert.equal(isForbiddenPath('theme/fr/.vscode/settings/a.json'), true);
+		assert.equal(isForbiddenPath('theme/.cache'), true);
+	});
+
+	it('gère les séparateurs Windows', () => {
+		assert.equal(isForbiddenPath('theme\\.git\\config'), true);
+		assert.equal(isForbiddenPath('theme\\fr\\style.css'), false);
+	});
+
+	it('accepte les chemins ordinaires, y compris relatifs', () => {
+		assert.equal(isForbiddenPath('theme/fr/assets/style.css'), false);
+		assert.equal(isForbiddenPath('./theme/fr/style.css'), false);
+		assert.equal(isForbiddenPath('../site/theme/style.css'), false);
 	});
 
 });

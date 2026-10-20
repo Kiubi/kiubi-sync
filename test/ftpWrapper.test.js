@@ -84,6 +84,21 @@ describe('ftpWrapper', () => {
 			assert.equal(add.mock.callCount(), 0);
 		});
 
+		it('ignore tout ce qui se trouve dans un dossier interdit', (t) => {
+			const ftp = createWrapper();
+			const add = t.mock.method(ftp.queue, 'add', () => {});
+			const watcher = new EventEmitter();
+
+			ftp.watch(watcher);
+			watcher.emit('add', 'theme/.git/config');
+			watcher.emit('change', 'theme/fr/.vscode/settings.json');
+			watcher.emit('unlink', 'theme/.git/index');
+			watcher.emit('unlinkDir', 'theme/.git/refs');
+			watcher.emit('unlinkDir', 'theme/.cache');
+
+			assert.equal(add.mock.callCount(), 0);
+		});
+
 	});
 
 	describe('watch → file → FTP', () => {

@@ -127,6 +127,21 @@ describe('synchronisation avec un serveur FTP', () => {
 			assert.deepEqual(Object.keys(readTree(localDir)), ['theme/style.css']);
 		});
 
+		it('ignore les dossiers interdits et leur contenu', async () => {
+			writeTree(remoteDir, {
+				'theme/style.css': 'body {}',
+				'theme/.git/HEAD': 'ref: refs/heads/main',
+				'theme/fr/.cache/data.json': '{}',
+				'theme/fr/index.html': '<html></html>',
+				'theme/old.LCK/file.txt': 'x',
+			});
+
+			await createWrapper().pullAll('theme');
+
+			assertNoErrorLogged();
+			assert.deepEqual(Object.keys(readTree(localDir)).sort(), ['theme/fr/index.html', 'theme/style.css']);
+		});
+
 		it('ignore les extensions listées dans skipFiles', async () => {
 			writeTree(remoteDir, {
 				'theme/style.css': 'body {}',
@@ -229,6 +244,20 @@ describe('synchronisation avec un serveur FTP', () => {
 
 			assertNoErrorLogged();
 			assert.deepEqual(Object.keys(readTree(remoteDir)), ['theme/style.css']);
+		});
+
+		it('ignore les dossiers interdits et leur contenu', async () => {
+			writeTree(localDir, {
+				'theme/style.css': 'body {}',
+				'theme/.git/HEAD': 'ref: refs/heads/main',
+				'theme/fr/.vscode/settings.json': '{}',
+				'theme/fr/index.html': '<html></html>',
+			});
+
+			await createWrapper().pushAll('theme');
+
+			assertNoErrorLogged();
+			assert.deepEqual(Object.keys(readTree(remoteDir)).sort(), ['theme/fr/index.html', 'theme/style.css']);
 		});
 
 	});
