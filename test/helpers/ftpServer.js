@@ -25,6 +25,8 @@ async function startFtpServer(root) {
 		url: 'ftp://127.0.0.1:0',
 		pasv_url: '127.0.0.1',
 		greeting: 'FTP de test',
+		// Comme le serveur Kiubi (<Limit CDUP XCUP> DenyAll)
+		blacklist: ['CDUP', 'XCUP'],
 		log: quietLog,
 	});
 

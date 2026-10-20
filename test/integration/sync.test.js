@@ -262,6 +262,45 @@ describe('synchronisation avec un serveur FTP', () => {
 
 	});
 
+	describe('ftpRmdir', () => {
+
+		it('le serveur de test refuse CDUP, comme le serveur Kiubi', async () => {
+			const ftp = createWrapper();
+			await ftp.connect();
+			await ftp.ftpClient.cd('/');
+			await assert.rejects(ftp.ftpClient.send('CDUP'), (error) => error.code === 502);
+			ftp.close();
+		});
+
+		it('supprime un dossier profond et son contenu', async () => {
+			writeTree(remoteDir, {
+				'theme/fr/assets/old/a.css': 'x',
+				'theme/fr/assets/old/sub/deep/b.html': 'x',
+				'theme/fr/assets/old/.DS_Store': 'x',
+				'theme/fr/assets/keep.css': 'x',
+			});
+			const ftp = createWrapper();
+
+			await ftp.ftpRmdir('theme/fr/assets/old');
+			ftp.close();
+
+			assert.deepEqual(Object.keys(readTree(remoteDir)), ['theme/fr/assets/keep.css']);
+		});
+
+		it('ne fait rien si le dossier n\'existe pas', async () => {
+			writeTree(remoteDir, {
+				'theme/style.css': 'x',
+			});
+			const ftp = createWrapper();
+
+			await ftp.ftpRmdir('theme/fr/absent');
+			ftp.close();
+
+			assert.deepEqual(Object.keys(readTree(remoteDir)), ['theme/style.css']);
+		});
+
+	});
+
 	describe('en cas d\'erreur', () => {
 
 		it('pullAll affiche l\'erreur sans la rejeter si l\'authentification échoue', async () => {

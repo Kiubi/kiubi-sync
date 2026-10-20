@@ -2,7 +2,7 @@ const FTP = require('basic-ftp');
 const { filter, endsWith } = require('lodash');
 const byteSize = require('byte-size');
 
-const { join, dirname } = require('path');
+const { join, dirname, posix } = require('path');
 const { readdir, stat, utimes } = require('fs');
 const { promisify } = require('util');
 const fsReadDir = promisify(readdir);
@@ -304,18 +304,72 @@ class ftpWrapper {
 
 		try {
 			await this.connect();
-			await this.ftpClient.removeDir(toFtpPath(path));
+			await this._removeDir(toFtpPath(path));
 		}
 		catch(error) {
-
-			if (error instanceof FTP.FTPError && error.code == 550) {
-				// dir already deleted
-				return Promise.resolve();
-			}
-
 			return Promise.reject(error.message);
 		}
 
+	}
+
+	/**
+	 * Remove a remote directory and its content
+	 *
+	 * Only absolute paths are used: basic-ftp removeDir() relies on CDUP,
+	 * which is denied by the Kiubi FTP server
+	 *
+	 * @param {String} ftpPath Absolute remote path
+	 * @returns {Promise<void>} Resolved if the directory does not exist
+	 * @private
+	 */
+	async _removeDir(ftpPath) {
+		let files;
+		try {
+			files = await this.ftpClient.list(ftpPath);
+		}
+		catch(error) {
+			// Servers answer 450, 451 or 550 for a missing directory, but these codes
+			// may also mean something else: check the parent before ignoring the error
+			if (error instanceof FTP.FTPError && [450, 451, 550].includes(error.code) && !(await this._remoteExists(ftpPath))) {
+				// dir already deleted
+				return;
+			}
+			throw error;
+		}
+
+		for (const file of files) {
+			if (file.name === '.' || file.name === '..') {
+				continue;
+			}
+			const filePath = posix.join(ftpPath, file.name);
+			if (file.isDirectory) {
+				await this._removeDir(filePath);
+			}
+			else {
+				await this.ftpClient.remove(filePath);
+			}
+		}
+		await this.ftpClient.removeEmptyDir(ftpPath);
+	}
+
+	/**
+	 * Test if a remote path exists, by listing its parent directory
+	 *
+	 * @param {String} ftpPath Absolute remote path
+	 * @returns {Promise<Boolean>} false if the parent directory can not be listed
+	 * @private
+	 */
+	async _remoteExists(ftpPath) {
+		try {
+			const files = await this.ftpClient.list(posix.dirname(ftpPath));
+			return files.some((file) => file.name === posix.basename(ftpPath));
+		}
+		catch(error) {
+			if (error instanceof FTP.FTPError) {
+				return false;
+			}
+			throw error;
+		}
 	}
 
 	/**

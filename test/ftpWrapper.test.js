@@ -19,8 +19,9 @@ function createClient() {
 		lastMod: async () => new Date(),
 		ensureDir: async () => {},
 		uploadFrom: async () => {},
+		list: async () => [],
 		remove: async () => {},
-		removeDir: async () => {},
+		removeEmptyDir: async () => {},
 	};
 }
 
@@ -229,43 +230,167 @@ describe('ftpWrapper', () => {
 
 	});
 
-	describe('ftpRemove / ftpRmdir', () => {
+	describe('ftpRemove', () => {
 
-		const cases = [
-			{ method: 'ftpRemove', clientMethod: 'remove' },
-			{ method: 'ftpRmdir', clientMethod: 'removeDir' },
-		];
+		it('supprime le chemin distant', async (t) => {
+			const client = createClient();
+			const remove = t.mock.method(client, 'remove');
 
-		for (const { method, clientMethod } of cases) {
+			await createWrapper(client).ftpRemove('theme/old.css');
 
-			it(`${method} supprime le chemin distant`, async (t) => {
-				const client = createClient();
-				const mocked = t.mock.method(client, clientMethod);
+			assert.deepEqual(remove.mock.calls[0].arguments, ['/theme/old.css']);
+		});
 
-				await createWrapper(client)[method]('theme/old');
-
-				assert.deepEqual(mocked.mock.calls[0].arguments, ['/theme/old']);
+		it('ignore une erreur 550 (déjà supprimé)', async (t) => {
+			const client = createClient();
+			t.mock.method(client, 'remove', async () => {
+				throw new FTP.FTPError({ code: 550, message: 'No such file' });
 			});
 
-			it(`${method} ignore une erreur 550 (déjà supprimé)`, async (t) => {
-				const client = createClient();
-				t.mock.method(client, clientMethod, async () => {
-					throw new FTP.FTPError({ code: 550, message: 'No such file' });
-				});
+			await createWrapper(client).ftpRemove('theme/old.css');
+		});
 
-				await createWrapper(client)[method]('theme/old');
+		it('rejette les autres erreurs', async (t) => {
+			const client = createClient();
+			t.mock.method(client, 'remove', async () => {
+				throw new FTP.FTPError({ code: 530, message: 'Not logged in' });
 			});
 
-			it(`${method} rejette les autres erreurs`, async (t) => {
-				const client = createClient();
-				t.mock.method(client, clientMethod, async () => {
-					throw new FTP.FTPError({ code: 530, message: 'Not logged in' });
-				});
+			await assert.rejects(createWrapper(client).ftpRemove('theme/old.css'), (error) => error === 'Not logged in');
+		});
 
-				await assert.rejects(createWrapper(client)[method]('theme/old'), (error) => error === 'Not logged in');
-			});
+	});
 
+	describe('ftpRmdir', () => {
+
+		/**
+		 * Client factice exposant une arborescence distante { '/chemin': [FileInfo] }
+		 */
+		function createTreeClient(tree) {
+			const client = createClient();
+			client.operations = [];
+			client.list = async (path) => {
+				if (!(path in tree)) {
+					throw new FTP.FTPError({ code: 450, message: `${path}: No such file or directory` });
+				}
+				return tree[path];
+			};
+			client.remove = async (path) => {
+				client.operations.push(['DELE', path]);
+			};
+			client.removeEmptyDir = async (path) => {
+				client.operations.push(['RMD', path]);
+			};
+			client.cd = async () => {
+				throw new Error('cd ne doit pas être utilisé');
+			};
+			client.cdup = async () => {
+				throw new Error('cdup ne doit pas être utilisé');
+			};
+			return client;
 		}
+
+		const dir = (name) => ({ name: name, isDirectory: true });
+		const file = (name) => ({ name: name, isDirectory: false });
+
+		it('supprime récursivement avec des chemins absolus, sans changer de dossier', async () => {
+			const client = createTreeClient({
+				'/theme/fr/old': [file('a.css'), dir('sub'), file('.DS_Store')],
+				'/theme/fr/old/sub': [file('b.html'), file('c.html.LCK')],
+			});
+
+			await createWrapper(client).ftpRmdir('theme/fr/old');
+
+			assert.deepEqual(client.operations, [
+				['DELE', '/theme/fr/old/a.css'],
+				['DELE', '/theme/fr/old/sub/b.html'],
+				['DELE', '/theme/fr/old/sub/c.html.LCK'],
+				['RMD', '/theme/fr/old/sub'],
+				['DELE', '/theme/fr/old/.DS_Store'],
+				['RMD', '/theme/fr/old'],
+			]);
+		});
+
+		it('ne descend jamais dans . ou ..', async () => {
+			const client = createTreeClient({
+				'/theme/fr/old': [dir('.'), dir('..'), file('a.css')],
+			});
+
+			await createWrapper(client).ftpRmdir('theme/fr/old');
+
+			assert.deepEqual(client.operations, [
+				['DELE', '/theme/fr/old/a.css'],
+				['RMD', '/theme/fr/old'],
+			]);
+		});
+
+		for (const code of [450, 451, 550]) {
+			it(`considère un ${code} comme déjà supprimé si le dossier a disparu du parent`, async () => {
+				const client = createTreeClient({
+					'/theme': [file('style.css')],
+				});
+				client.list = async (path) => {
+					if (path === '/theme') {
+						return [file('style.css')];
+					}
+					throw new FTP.FTPError({ code: code, message: 'No such file or directory' });
+				};
+
+				await createWrapper(client).ftpRmdir('theme/old');
+				assert.deepEqual(client.operations, []);
+			});
+		}
+
+		it('considère le dossier comme supprimé si son parent a aussi disparu', async () => {
+			const client = createTreeClient({});
+
+			await createWrapper(client).ftpRmdir('theme/old/sub');
+			assert.deepEqual(client.operations, []);
+		});
+
+		it('rejette l\'erreur si le dossier existe toujours dans le parent', async () => {
+			const client = createTreeClient({});
+			client.list = async (path) => {
+				if (path === '/theme') {
+					return [dir('old')];
+				}
+				throw new FTP.FTPError({ code: 451, message: 'Local error' });
+			};
+
+			await assert.rejects(createWrapper(client).ftpRmdir('theme/old'), (error) => error === 'Local error');
+		});
+
+		it('propage une erreur non FTP pendant la vérification du parent', async () => {
+			const client = createTreeClient({});
+			client.list = async (path) => {
+				if (path === '/theme') {
+					throw new Error('Socket fermée');
+				}
+				throw new FTP.FTPError({ code: 550, message: 'No such file or directory' });
+			};
+
+			await assert.rejects(createWrapper(client).ftpRmdir('theme/old'), (error) => error === 'Socket fermée');
+		});
+
+		it('rejette une erreur survenue pendant la suppression du contenu', async () => {
+			const client = createTreeClient({
+				'/theme/old': [file('a.css')],
+			});
+			client.remove = async () => {
+				throw new FTP.FTPError({ code: 550, message: 'Permission denied' });
+			};
+
+			await assert.rejects(createWrapper(client).ftpRmdir('theme/old'), (error) => error === 'Permission denied');
+		});
+
+		it('rejette les autres erreurs de listing', async (t) => {
+			const client = createClient();
+			t.mock.method(client, 'list', async () => {
+				throw new FTP.FTPError({ code: 530, message: 'Not logged in' });
+			});
+
+			await assert.rejects(createWrapper(client).ftpRmdir('theme/old'), (error) => error === 'Not logged in');
+		});
 
 	});
 
