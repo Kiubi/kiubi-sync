@@ -74,21 +74,25 @@ describe('synchronisation avec un serveur FTP', () => {
 		rmSync(workspace, { recursive: true, force: true });
 	});
 
-	function createWrapper() {
+	function createWrapper(params = {}) {
 		return new ftpWrapper({
 			host: server.host,
 			port: server.port,
 			user: server.user,
 			password: server.password,
+			...params,
 		});
 	}
 
 	/**
 	 * pullAll et pushAll affichent les erreurs au lieu de les rejeter
 	 */
+	function loggedErrors() {
+		return log.mock.calls.filter((call) => String(call.arguments[0]).includes('Erreur'));
+	}
+
 	function assertNoErrorLogged() {
-		const errors = log.mock.calls.filter((call) => String(call.arguments[0]).includes('Erreur'));
-		assert.deepEqual(errors.map((call) => call.arguments), []);
+		assert.deepEqual(loggedErrors().map((call) => call.arguments), []);
 	}
 
 	describe('pullAll', () => {
@@ -225,6 +229,45 @@ describe('synchronisation avec un serveur FTP', () => {
 
 			assertNoErrorLogged();
 			assert.deepEqual(Object.keys(readTree(remoteDir)), ['theme/style.css']);
+		});
+
+	});
+
+	describe('en cas d\'erreur', () => {
+
+		it('pullAll affiche l\'erreur sans la rejeter si l\'authentification échoue', async () => {
+			writeTree(remoteDir, {
+				'theme/style.css': 'body {}',
+			});
+			const ftp = createWrapper({ password: 'mauvais' });
+
+			await ftp.pullAll('theme');
+
+			assert.ok(loggedErrors().length > 0);
+			assert.equal(ftp.ftpClient.closed, true);
+			assert.deepEqual(readTree(localDir), {});
+		});
+
+		it('pushAll affiche l\'erreur sans la rejeter si l\'authentification échoue', async () => {
+			writeTree(localDir, {
+				'theme/style.css': 'body {}',
+			});
+			const ftp = createWrapper({ password: 'mauvais' });
+
+			await ftp.pushAll('theme');
+
+			assert.ok(loggedErrors().length > 0);
+			assert.equal(ftp.ftpClient.closed, true);
+			assert.deepEqual(readTree(remoteDir), {});
+		});
+
+		it('pushAll affiche l\'erreur si le dossier local n\'existe pas', async () => {
+			const ftp = createWrapper();
+
+			await ftp.pushAll('inexistant');
+
+			assert.ok(loggedErrors().length > 0);
+			assert.equal(ftp.ftpClient.closed, true);
 		});
 
 	});

@@ -15,6 +15,8 @@ function createClient() {
 			this.closed = true;
 		},
 		trackProgress() {},
+		access: async () => {},
+		lastMod: async () => new Date(),
 		ensureDir: async () => {},
 		uploadFrom: async () => {},
 		remove: async () => {},
@@ -84,6 +86,26 @@ describe('ftpWrapper', () => {
 
 	});
 
+	describe('watch → file → FTP', () => {
+
+		it('envoie le fichier modifié une fois la temporisation écoulée', async (t) => {
+			const ftp = createWrapper();
+			const put = t.mock.method(ftp, 'ftpPut', async () => {});
+			const watcher = new EventEmitter();
+
+			ftp.watch(watcher);
+			watcher.emit('change', 'theme/a.css');
+			assert.equal(put.mock.callCount(), 0);
+
+			// Déclenche immédiatement la temporisation de lodash.debounce
+			ftp.queue.deflush.flush();
+			await new Promise((resolve) => setImmediate(resolve));
+
+			assert.deepEqual(put.mock.calls.map((call) => call.arguments), [['theme/a.css']]);
+		});
+
+	});
+
 	describe('runCommand', () => {
 
 		it('appelle la commande FTP correspondante', async (t) => {
@@ -103,6 +125,67 @@ describe('ftpWrapper', () => {
 
 		it('rejette une commande inconnue', async () => {
 			await assert.rejects(createWrapper().runCommand({ cmd: 'ftpChmod', path: 'theme/a.css' }));
+		});
+
+	});
+
+	describe('connect', () => {
+
+		it('affiche l\'erreur de connexion sans la rejeter', async (t) => {
+			const client = createClient();
+			client.closed = true;
+			t.mock.method(client, 'access', async () => {
+				throw new Error('Connexion refusée');
+			});
+
+			await createWrapper(client).connect();
+
+			const errors = console.log.mock.calls.filter((call) => String(call.arguments[0]).includes('Erreur'));
+			assert.equal(errors.length, 1);
+		});
+
+		it('ne se reconnecte pas si la connexion est ouverte', async (t) => {
+			const client = createClient();
+			const access = t.mock.method(client, 'access', async () => {});
+
+			await createWrapper(client).connect();
+
+			assert.equal(access.mock.callCount(), 0);
+		});
+
+	});
+
+	describe('_remoteModifiedAt', () => {
+
+		it('utilise la date du listing quand le serveur la fournit (MLSD)', async (t) => {
+			const client = createClient();
+			const lastMod = t.mock.method(client, 'lastMod', async () => new Date());
+			const modifiedAt = new Date('2026-01-15T10:00:00Z');
+
+			const date = await createWrapper(client)._remoteModifiedAt({ name: 'style.css', modifiedAt: modifiedAt });
+
+			assert.equal(date, modifiedAt);
+			assert.equal(lastMod.mock.callCount(), 0);
+		});
+
+		it('demande la date au serveur sinon (MDTM)', async (t) => {
+			const client = createClient();
+			const modifiedAt = new Date('2026-01-15T10:00:00Z');
+			const lastMod = t.mock.method(client, 'lastMod', async () => modifiedAt);
+
+			const date = await createWrapper(client)._remoteModifiedAt({ name: 'style.css' });
+
+			assert.equal(date, modifiedAt);
+			assert.deepEqual(lastMod.mock.calls[0].arguments, ['style.css']);
+		});
+
+		it('renvoie null si le serveur ne connaît pas la date', async (t) => {
+			const client = createClient();
+			t.mock.method(client, 'lastMod', async () => {
+				throw new FTP.FTPError({ code: 502, message: 'Command not implemented' });
+			});
+
+			assert.equal(await createWrapper(client)._remoteModifiedAt({ name: 'style.css' }), null);
 		});
 
 	});
