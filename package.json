@@ -3,6 +3,10 @@
   "version": "0.1.5",
   "description": "Aide à la publication de thème graphique personnalisé sur Kiubi",
   "main": "index.js",
+  "files": [
+    "index.js",
+    "src/"
+  ],
   "scripts": {
     "lint": "eslint \"./index.js\" \"./src/\" \"./test/\"",
     "lint-fix": "eslint --fix \"./index.js\" \"./src/\" \"./test/\"",
