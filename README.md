@@ -1,5 +1,10 @@
 # kiubi-sync
 
+[![npm](https://img.shields.io/npm/v/kiubi-sync)](https://www.npmjs.com/package/kiubi-sync)
+[![license](https://img.shields.io/npm/l/kiubi-sync)](LICENSE)
+[![tests](https://github.com/Kiubi/kiubi-sync/actions/workflows/test.yml/badge.svg)](https://github.com/Kiubi/kiubi-sync/actions/workflows/test.yml)
+[![coverage](https://codecov.io/gh/Kiubi/kiubi-sync/graph/badge.svg)](https://codecov.io/gh/Kiubi/kiubi-sync)
+
 > Aide à la publication de thème graphique personnalisé sur Kiubi.
 
 ## Installation
